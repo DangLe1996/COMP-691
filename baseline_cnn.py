@@ -70,8 +70,16 @@ if __name__ == "__main__":
 
     # dataset: normalize and convert to tensor
     transform = transforms.Compose([
+        transforms.Normalize((0.5,), (0.5,))
+    ])
+    # do flips to increase dataset
+    transform_horizontal = transforms.Compose([
         transforms.Normalize((0.5,), (0.5,)),
-        transforms.RandomHorizontalFlip(1),
+        transforms.RandomHorizontalFlip(1)
+    ])
+    # do flips to increase dataset
+    transform_vertical = transforms.Compose([
+        transforms.Normalize((0.5,), (0.5,)),
         transforms.RandomVerticalFlip(1)
     ])
 
@@ -83,16 +91,15 @@ if __name__ == "__main__":
         ##################### YOUR CODE GOES HERE
         x0 = torch.load(input_dir + '/data/train_data/train_{}/class_0/image_tensors.pt'.format(i))
         x1 = torch.load(input_dir + '/data/train_data/train_{}/class_1/image_tensors.pt'.format(i))
-        train_data = torch.utils.data.TensorDataset(transform(torch.cat([x0, x1])), torch.cat(
-            [torch.zeros((x0.shape[0])), torch.ones((x1.shape[0]))]).long())
 
+        train_data = torch.utils.data.TensorDataset(torch.cat([transform(torch.cat([x0, x1])), transform_horizontal(torch.cat([x0, x1])), transform_vertical(torch.cat([x0, x1]))]),
+                                                    torch.cat([torch.zeros((x0.shape[0])), torch.ones((x1.shape[0])), torch.zeros((x0.shape[0])), torch.ones((x1.shape[0])), torch.zeros((x0.shape[0])), torch.ones((x1.shape[0]))]).long())
         x = torch.load(input_dir + '/data/val/image_tensors.pt')
         val_data = torch.utils.data.TensorDataset(transform(x))
 
         # dataset: initialize dataloaders for train and validation set
         train_loader = torch.utils.data.DataLoader(train_data, batch_size=128, shuffle=True)
         val_loader = torch.utils.data.DataLoader(val_data, batch_size=128, shuffle=False)
-
         # model: initialize model
         model = Net()
         model.to(device)
