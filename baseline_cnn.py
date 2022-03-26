@@ -73,7 +73,17 @@ if __name__=="__main__":
     transform=transforms.Compose([
     transforms.Normalize((0.5,), (0.5,))
     ])
-    
+    # do flips to increase dataset
+    transform_horizontal = transforms.Compose([
+        transforms.Normalize((0.5,), (0.5,)),
+        transforms.RandomHorizontalFlip(1)
+    ])
+    # do flips to increase dataset
+    transform_vertical = transforms.Compose([
+        transforms.Normalize((0.5,), (0.5,)),
+        transforms.RandomVerticalFlip(1)
+    ])
+
     # dataset: load mednist data
     dir_path = os.path.dirname(os.path.realpath(__file__))
     
@@ -82,19 +92,20 @@ if __name__=="__main__":
         ##################### YOUR CODE GOES HERE
         x0 = torch.load(input_dir + '/data/train_data/train_{}/class_0/image_tensors.pt'.format(i))
         x1 = torch.load(input_dir + '/data/train_data/train_{}/class_1/image_tensors.pt'.format(i))
+
         train_data = torch.utils.data.TensorDataset(transform(torch.cat([x0,x1])), torch.cat([torch.zeros((x0.shape[0])), torch.ones((x1.shape[0]))]).long())
-        
         x = torch.load(input_dir + '/data/val/image_tensors.pt')
         val_data = torch.utils.data.TensorDataset(transform(x))
         
         # dataset: initialize dataloaders for train and validation set
-        train_loader = torch.utils.data.DataLoader(train_data, batch_size=128, shuffle=True)
+        train_loader = torch.utils.data.DataLoader(train_data, batch_size=2, shuffle=True)
+        #Only 10 samples, so having batch size more than 10 doesn't do anything. Having batch size of 2 may be better (5 train) ?
         val_loader = torch.utils.data.DataLoader(val_data, batch_size=128, shuffle=False)
 
         # model: initialize model
         model = Net()
         model.to(device)
-        optimizer = torch.optim.SGD(model.parameters(), 
+        optimizer = torch.optim.SGD(model.parameters(),
                                     lr=0.01, momentum=0.9,
                                     weight_decay=0.0005)
 
@@ -104,7 +115,7 @@ if __name__=="__main__":
         # model: training loop
         print("[Training] Start...\n")
         for epoch in range(50):
-            train(model, device, train_loader, optimizer, epoch, display=epoch%5==0)
+            train(model, device, train_loader, optimizer, epoch, display=epoch % 5 == 0)
         print("\n[Training] Done")
         ##################### END OF YOUR CODE
 
