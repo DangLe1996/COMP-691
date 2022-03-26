@@ -18,20 +18,31 @@ class Net(torch.nn.Module):
         super(Net, self).__init__()
         self.layers = nn.ModuleList()
         
-        self.layers+=[nn.Conv2d(1, 16,  kernel_size=3) , 
+        self.layers+=[nn.Conv2d(1, 128,  kernel_size=3) ,
                       nn.ReLU(inplace=True)]
-        self.layers+=[nn.Conv2d(16, 16,  kernel_size=3, stride=2), 
+        self.layers += [nn.BatchNorm2d(128)]
+        self.layers += [nn.MaxPool2d(2)]
+
+        self.layers+=[nn.Conv2d(128, 60,  kernel_size=3, stride=1),
                       nn.ReLU(inplace=True)]
-        self.layers+=[nn.Conv2d(16, 32,  kernel_size=3), 
+        self.layers+=[nn.Conv2d(60, 32,  kernel_size=3),
                       nn.ReLU(inplace=True)]
-        self.layers+=[nn.Conv2d(32, 32,  kernel_size=3, stride=2), 
-                      nn.ReLU(inplace=True)]
-        self.fc = nn.Linear(32*4*4, 2)
-        
+        self.layers += [nn.BatchNorm2d(32)]
+        self.layers += [nn.Dropout()]
+
+        self.layers+=[nn.Conv2d(32, 32,  kernel_size=3),
+                      nn.ReLU()]
+        self.fc = nn.Linear(32*7*7, 2)
+
     def forward(self, x):
         for i in range(len(self.layers)):
+            #print(x.size())
+
             x = self.layers[i](x)
-        x = x.view(-1, 32*4*4)
+            # print(x.size())
+
+        # x = x.view(-1, 32*4*4)
+        x = x.view(-1, 32*7*7)
         x = self.fc(x)
         return x
 
@@ -119,11 +130,12 @@ if __name__=="__main__":
         x1 = torch.load(input_dir + '/data/train_data/train_{}/class_1/image_tensors.pt'.format(i))
 
         blurrer = T.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5))
-        blurrer = T.RandomAutocontrast()
+        autoContrast = T.RandomAutocontrast()
         def makeBlur(input):
             output = torch.Tensor()
             for i in input:
-                temp = [blurrer(i) for _ in range(4)]
+                temp = [blurrer(i) for _ in range(2)]
+                temp += [autoContrast(i) for _ in range(2)]
                 temp.append(i)
                 temp = torch.stack(temp)
                 output = torch.cat([output,temp])
@@ -150,7 +162,7 @@ if __name__=="__main__":
         val_data = torch.utils.data.TensorDataset(transform(x))
         
         # dataset: initialize dataloaders for train and validation set
-        train_loader = torch.utils.data.DataLoader(train_data, batch_size=10, shuffle=True)
+        train_loader = torch.utils.data.DataLoader(train_data, batch_size=128, shuffle=True)
         '''
         Dang: Only 10 samples, so having batch size more than 10 doesn't do anything.
          Having batch size of 2 may be better (5 train) ?
@@ -185,8 +197,8 @@ if __name__=="__main__":
         # test evaluation: make predictions
         print("[Saving Outputs] Test set...")
 
-        # test_loader = torch.utils.data.DataLoader(val_data, batch_size=128, shuffle=False)
-        test_loader = torch.utils.data.DataLoader(test, batch_size=128, shuffle=True)
+        test_loader = torch.utils.data.DataLoader(val_data, batch_size=128, shuffle=False)
+        # test_loader = torch.utils.data.DataLoader(test, batch_size=128, shuffle=True)
         test_predictions = []
         model.eval()
         with torch.no_grad():
