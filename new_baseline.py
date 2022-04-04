@@ -8,48 +8,58 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
-
+import matplotlib.pyplot as plt
 from sys import argv
 from torchvision import datasets, transforms
 
 local = True
+
+def plot(imgs, with_orig=False, row_title=None, **imshow_kwargs):
+    if not isinstance(imgs[0], list):
+        # Make a 2d grid even if there's just 1 row
+        imgs = [imgs]
+
+    num_rows = len(imgs)
+    num_cols = len(imgs[0]) + with_orig
+    fig, axs = plt.subplots(nrows=num_rows, ncols=num_cols, squeeze=False)
+    for row_idx, row in enumerate(imgs):
+
+        for col_idx, img in enumerate(row):
+            ax = axs[row_idx, col_idx]
+            ax.imshow(np.asarray(img[0]), **imshow_kwargs)
+            ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
+    if with_orig:
+        axs[0, 0].set(title='Original image')
+        axs[0, 0].title.set_size(8)
+    if row_title is not None:
+        for row_idx in range(num_rows):
+            axs[row_idx, 0].set(ylabel=row_title[row_idx])
+    plt.show()
 
 class Net(torch.nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         self.layers = nn.ModuleList()
 
-        self.layers += [nn.Conv2d(1, 64, kernel_size=3),
+        self.layers += [nn.Conv2d(1, 64, kernel_size=3, stride=1),
                        nn.ReLU(inplace=True)]
         self.layers += [nn.BatchNorm2d(64)]
-        self.layers += [nn.MaxPool2d(2)]
-        self.layers += [nn.Conv2d(64, 32, kernel_size=3, stride=2),
-                        nn.ReLU(inplace=True)]
-        self.layers += [nn.Conv2d(32, 32, kernel_size=3),
-                        nn.ReLU(inplace=True)]
+        self.layers += [nn.MaxPool2d(2, stride=2)]
 
-        self.fc = nn.Linear(32 * 4 * 4, 2)
+        self.layers += [nn.Conv2d(64, 32, kernel_size=3, stride=1),
+                        nn.ReLU(inplace=True)]
+        self.layers += [nn.MaxPool2d(2, stride=2)]
 
-        # self.layers += [nn.Conv2d(1, 128, kernel_size=3),
-        #                 nn.ReLU(inplace=True)]
-        # self.layers += [nn.BatchNorm2d(128)]
-        # self.layers += [nn.MaxPool2d(2)]
-        #
-        # self.layers += [nn.Conv2d(128, 64, kernel_size=2),
-        #                 nn.ReLU(inplace=True)]
-        # self.layers += [nn.MaxPool2d(2)]
-        # self.layers += [nn.BatchNorm2d(64)]
-        #
-        # self.layers += [nn.Conv2d(64, 32, kernel_size=2),
-        #                 nn.ReLU(inplace=True)]
-        # self.layers += [nn.MaxPool2d(2)]
-        # self.layers += [nn.BatchNorm2d(32)]
-        # self.layers += [nn.Dropout(0.5)]
-        #
-        # self.layers += [nn.Flatten()]
-        # self.layers += [nn.Linear(128, 32)]
-        # self.layers += [nn.Dropout(0.5)]
-        # self.layers += [nn.Linear(32, 1)]
+        self.layers += [nn.Conv2d(32, 32, kernel_size=3, stride=1),
+                        nn.ReLU(inplace=True)]
+        self.layers += [nn.AvgPool2d(2, stride=2)]
+
+        self.layers += [nn.Flatten()]
+        self.layers += [nn.Dropout(0.5)]
+        self.layers += [nn.Linear(32, 16)]
+        self.layers += [nn.ReLU(inplace=True)]
+        self.layers += [nn.Linear(16, 2)]
+
 
     def forward(self, x):
         for i in range(len(self.layers)):
@@ -58,13 +68,13 @@ class Net(torch.nn.Module):
 
             x = self.layers[i](x)
             # print(x.size())
-        x = x.view(-1, 32 * 4 * 4)
-        x = self.fc(x)
         return x
 
 def train(model, device, train_loader, optimizer, epoch, display=True):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
+        plot(data)
+        #print(data[0])
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
@@ -129,8 +139,7 @@ if __name__ == "__main__":
     # dataset: normalize and convert to tensor
     transform_train = transforms.Compose([
         transforms.Normalize((0.5,), (0.5,)),
-        #transforms.RandomHorizontalFlip(0.25),
-        #transforms.RandomVerticalFlip(0.25)
+        transforms.RandomHorizontalFlip(0.25),
     ])
 
     transform_test = transforms.Compose([
@@ -140,10 +149,10 @@ if __name__ == "__main__":
     # dataset: load mednist data
     dir_path = os.path.dirname(os.path.realpath(__file__))
     accuracies = []
-    r=26
+    r = 26
     if local:
         r = 6
-    for i in range(1, r): # To change to 26 when submitting
+    for i in range(1, r):
 
         ##################### YOUR CODE GOES HERE
         x0 = torch.load(
@@ -169,9 +178,8 @@ if __name__ == "__main__":
         # model: initialize model
         model = Net()
         model.to(device)
-        optimizer = torch.optim.SGD(model.parameters(),
-                                    lr=0.01, momentum=0.9,
-                                    weight_decay=0.0005)
+        optimizer = torch.optim.Adam(model.parameters(),
+                                    lr=0.01, weight_decay=0.0005)
 
         print("[Preparation] Done")
 
