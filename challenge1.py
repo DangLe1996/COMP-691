@@ -18,7 +18,7 @@ import torch.optim as optim
 from torch.utils.data import Subset
 import re
 from torchvision import datasets, transforms
-
+from torch import functional as F
 """Now let's visualize the chest xray data"""
 
 data_flag = 'pneumoniamnist'

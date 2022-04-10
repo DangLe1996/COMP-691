@@ -8,11 +8,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
-
+# import matplotlib.pyplot as plt
+import numpy as np
 from sys import argv
 from torchvision import datasets, transforms
 import torchvision.transforms as T
-import matplotlib.pyplot as plt
+
 class Net(torch.nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -36,7 +37,7 @@ class Net(torch.nn.Module):
 
     def forward(self, x):
         for i in range(len(self.layers)):
-            #print(x.size())
+            # print(x.size())
 
             x = self.layers[i](x)
             # print(x.size())
@@ -62,28 +63,10 @@ def train(model, device, train_loader, optimizer, epoch, display=True):
           100. * batch_idx / len(train_loader), loss.item()))
 
 import os
-def plot(imgs, with_orig=False, row_title=None, **imshow_kwargs):
-    if not isinstance(imgs[0], list):
-        # Make a 2d grid even if there's just 1 row
-        imgs = [imgs]
 
-    num_rows = len(imgs)
-    num_cols = len(imgs[0]) + with_orig
-    fig, axs = plt.subplots(nrows=num_rows, ncols=num_cols, squeeze=False)
-    for row_idx, row in enumerate(imgs):
-
-        for col_idx, img in enumerate(row):
-            ax = axs[row_idx, col_idx]
-            ax.imshow(np.asarray(img[0]), **imshow_kwargs)
-            ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
-    if with_orig:
-        axs[0, 0].set(title='Original image')
-        axs[0, 0].title.set_size(8)
-    if row_title is not None:
-        for row_idx in range(num_rows):
-            axs[row_idx, 0].set(ylabel=row_title[row_idx])
-
-    plt.tight_layout()
+# from sklearn.metrics import confusion_matrix
+# import seaborn as sn
+# import pandas as pd
 if __name__=="__main__":
     if len(argv)==1:
         input_dir = os.getcwd()
@@ -95,7 +78,6 @@ if __name__=="__main__":
     print("Using input_dir: " + input_dir)
     print("Using output_dir: " + output_dir)
 
-
     ### Preparation
     print("[Preparation] Start...")
     # select device
@@ -103,20 +85,17 @@ if __name__=="__main__":
     device = torch.device("cuda" if use_cuda else "cpu")
 
     # dataset: normalize and convert to tensor
-    transform=transforms.Compose([
-    transforms.Normalize((0.5,), (0.5,)),
 
-    ])
-    # do flips to increase dataset
-    transform_horizontal = transforms.Compose([
+    transform = transforms.Compose([
         transforms.Normalize((0.5,), (0.5,)),
-        transforms.RandomHorizontalFlip(1)
     ])
-    # do flips to increase dataset
-    transform_vertical = transforms.Compose([
-        transforms.Normalize((0.5,), (0.5,)),
-        transforms.RandomVerticalFlip(1)
-    ])
+
+    def combineTransform(img):
+        img += 2*T.functional.adjust_sharpness(img, 4)
+        img += 4* T.functional.adjust_contrast(img, 2)
+        # img = transform(img)
+        return img
+
 
     # dataset: load mednist data
     dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -140,8 +119,10 @@ if __name__=="__main__":
                 temp = torch.stack(temp)
                 output = torch.cat([output,temp])
             return output
-        x0 = makeBlur(x0)
-        x1 = makeBlur(x1)
+
+        x0 = torch.stack([combineTransform(x) for x in x0])
+        x1 = torch.stack([combineTransform(x) for x in x1])
+
         train_data = torch.utils.data.TensorDataset(transform(torch.cat([x0,x1])), torch.cat([torch.zeros((x0.shape[0])), torch.ones((x1.shape[0]))]).long())
 
 
@@ -154,6 +135,8 @@ if __name__=="__main__":
                 x1 = torch.load(input_dir + '/data/train_data/train_{}/class_1/image_tensors.pt'.format(j))
                 x0_test = torch.cat([x0,x0_test])
                 x1_test = torch.cat([x1,x1_test])
+        x0_test = torch.stack([combineTransform(x) for x in x0_test])
+        x1_test = torch.stack([combineTransform(x) for x in x1_test])
 
         test = torch.utils.data.TensorDataset(transform(torch.cat([x0_test, x1_test])), torch.cat(
             [torch.zeros((x0_test.shape[0])), torch.ones((x1_test.shape[0]))]).long())
@@ -197,8 +180,8 @@ if __name__=="__main__":
         # test evaluation: make predictions
         print("[Saving Outputs] Test set...")
 
-        test_loader = torch.utils.data.DataLoader(val_data, batch_size=128, shuffle=False)
-        # test_loader = torch.utils.data.DataLoader(test, batch_size=128, shuffle=True)
+        # test_loader = torch.utils.data.DataLoader(val_data, batch_size=128, shuffle=False)
+        test_loader = torch.utils.data.DataLoader(test, batch_size=128, shuffle=True)
         test_predictions = []
         model.eval()
         with torch.no_grad():
@@ -214,7 +197,62 @@ if __name__=="__main__":
         print('Accuracy is ', accuracy)
         # test evaluation: save predictions
         test_str = '\n'.join(list(map(str, test_predictions)))
-        
+
+        # y_pred = []
+        # y_true = []
+        #
+        # # iterate over test data
+        # for inputs, labels in test_loader:
+        #     output = model(inputs)  # Feed Network
+        #
+        #     output = (torch.max(torch.exp(output), 1)[1]).data.cpu().numpy()
+        #     y_pred.extend(output)  # Save Prediction
+        #
+        #     labels = labels.data.cpu().numpy()
+        #     y_true.extend(labels)  # Save Truth
+        #
+        #
+        #
+        # # for index, (pre, target) in enumerate( zip(y_pred,y_true)):
+        # #     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+        # #
+        # #     image = test_loader.dataset[index][0]
+        # #     x = image.numpy()[0]
+        # #     fig.suptitle(f'True Label: {target}, Predicted: {pre}')
+        # #     ax1.matshow(x )
+        # #     ax1.set_title('Original')
+        # #     # blur = makeBlur([image])
+        # #     # ax2.matshow(blur[0][0] )
+        # #     # ax2.set_title(f'Blur ')
+        # #     bright = T.functional.adjust_sharpness(image,4)
+        # #     ax2.matshow(bright[0])
+        # #     ax2.set_title(f'Sharpness')
+        # #     x = combineTransform(image)
+        # #     ax3.matshow(x[0] )
+        # #     ax3.set_title(f'Normalize (0.5,0.5) ')
+        # #     x = T.functional.adjust_contrast(image,2)
+        # #     ax4.matshow(x[0])
+        # #     ax4.set_title(f'Contrast ')
+        # #     fig.tight_layout()
+        # #     plt.show()
+        #
+        # # constant for classes
+        # classes = ('havenot','have')
+        #
+        # # Build confusion matrix
+        # cf_matrix = confusion_matrix(y_true, y_pred)
+        # df_cm = pd.DataFrame(cf_matrix , index=[i for i in classes],
+        #                      columns=[i for i in classes])
+        # plt.figure(figsize=(12, 7))
+        # sn.heatmap(df_cm, annot=True)
+        # plt.title(f'Baseline + Minor Enhancement {i}')
+        # plt.ylabel('True Label')
+        # plt.xlabel('Predicted Label')
+        # plt.savefig(f'baseline_enhanced_model_confusionmatrix{i}.png')
+        # plt.show()
+
+
+
         with open(os.path.join(output_dir, 'answer_test_{}.txt'.format(i)), 'w') as result_file:
             result_file.write(test_str)
         print("[Saving Outputs] Done")
