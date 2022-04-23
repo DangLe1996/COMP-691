@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import numpy as np
 from sys import argv
 from torchvision import datasets, transforms
@@ -68,6 +68,8 @@ import os
 # import seaborn as sn
 # import pandas as pd
 if __name__=="__main__":
+    validationMode = True
+
     if len(argv)==1:
         input_dir = os.getcwd()
         output_dir = os.getcwd()
@@ -93,32 +95,18 @@ if __name__=="__main__":
     def combineTransform(img):
         img += 2*T.functional.adjust_sharpness(img, 4)
         img += 4* T.functional.adjust_contrast(img, 2)
-        # img = transform(img)
         return img
-
 
     # dataset: load mednist data
     dir_path = os.path.dirname(os.path.realpath(__file__))
 
     test_index = list(range(1,6))
     accuracies = []
-    for i in range(1, 6):
+    for i in range(1, 26):
     
         ##################### YOUR CODE GOES HERE
         x0 = torch.load(input_dir + '/data/train_data/train_{}/class_0/image_tensors.pt'.format(i))
         x1 = torch.load(input_dir + '/data/train_data/train_{}/class_1/image_tensors.pt'.format(i))
-
-        blurrer = T.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5))
-        autoContrast = T.RandomAutocontrast()
-        def makeBlur(input):
-            output = torch.Tensor()
-            for i in input:
-                temp = [blurrer(i) for _ in range(2)]
-                temp += [autoContrast(i) for _ in range(2)]
-                temp.append(i)
-                temp = torch.stack(temp)
-                output = torch.cat([output,temp])
-            return output
 
         x0 = torch.stack([combineTransform(x) for x in x0])
         x1 = torch.stack([combineTransform(x) for x in x1])
@@ -142,6 +130,7 @@ if __name__=="__main__":
             [torch.zeros((x0_test.shape[0])), torch.ones((x1_test.shape[0]))]).long())
 
         x = torch.load(input_dir + '/data/val/image_tensors.pt')
+        x =  torch.stack([combineTransform(_x) for _x in x])
         val_data = torch.utils.data.TensorDataset(transform(x))
         
         # dataset: initialize dataloaders for train and validation set
@@ -180,21 +169,31 @@ if __name__=="__main__":
         # test evaluation: make predictions
         print("[Saving Outputs] Test set...")
 
-        # test_loader = torch.utils.data.DataLoader(val_data, batch_size=128, shuffle=False)
-        test_loader = torch.utils.data.DataLoader(test, batch_size=128, shuffle=True)
         test_predictions = []
         model.eval()
-        with torch.no_grad():
-            for (data, target)in test_loader:
-                data = data.to(device)
-                output = model(data)
-                pred = output.max(1, keepdim=True)[1]  # get the index of the max log-probability
-                test_predictions.extend(pred.squeeze().cpu().tolist())
 
-                correct  = (np.array(pred.squeeze().cpu().tolist()) == np.array(target.squeeze().cpu().tolist()))
-        accuracy = correct.sum() / correct.size
-        accuracies.append(accuracy)
-        print('Accuracy is ', accuracy)
+
+        if validationMode:
+            test_loader = torch.utils.data.DataLoader(test, batch_size=128, shuffle=True)
+            with torch.no_grad():
+                for (data, target)in test_loader:
+                    data = data.to(device)
+                    output = model(data)
+                    pred = output.max(1, keepdim=True)[1]  # get the index of the max log-probability
+                    test_predictions.extend(pred.squeeze().cpu().tolist())
+
+                    correct  = (np.array(pred.squeeze().cpu().tolist()) == np.array(target.squeeze().cpu().tolist()))
+            accuracy = correct.sum() / correct.size
+            accuracies.append(accuracy)
+            print('Accuracy is ', accuracy)
+        else:
+            test_loader = torch.utils.data.DataLoader(val_data, batch_size=128, shuffle=False)
+            with torch.no_grad():
+                for (data,) in test_loader:
+                    data = data.to(device)
+                    output = model(data)
+                    pred = output.max(1, keepdim=True)[1]  # get the index of the max log-probability
+                    test_predictions.extend(pred.squeeze().cpu().tolist())
         # test evaluation: save predictions
         test_str = '\n'.join(list(map(str, test_predictions)))
 
@@ -258,4 +257,5 @@ if __name__=="__main__":
         print("[Saving Outputs] Done")
 
     print("All done!")
-    print("Average accuracy is ", np.mean(accuracies))
+    # print("Average accuracy is ", np.mean(accuracies))
+
