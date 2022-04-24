@@ -107,8 +107,15 @@ class Net(torch.nn.Module):
 
         self.layers += [nn.Conv2d(32, 32, kernel_size=2),
                         nn.ReLU()]
-        self.fc = nn.Linear(n, 2)
-
+        self.classifier = nn.Sequential(
+            # nn.Dropout(p=0.5, inplace=True),
+            nn.Linear(in_features=n, out_features=4096),
+            nn.ReLU(),
+            # nn.Dropout(p=0.5, inplace=True),
+            nn.Linear(in_features=4096, out_features=4096),
+            nn.ReLU(),
+            nn.Linear(in_features=4096, out_features=2),
+        )
     def forward(self, x):
         for i in range(len(self.layers)):
             # print(x.size())
@@ -117,7 +124,7 @@ class Net(torch.nn.Module):
             #
         # x = x.view(-1, 32*4*4)
         x = x.view(-1, n)
-        x = self.fc(x)
+        x = self.classifier(x)
         return x
 
 

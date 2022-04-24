@@ -12,37 +12,47 @@ import numpy as np
 from sys import argv
 from torchvision import datasets, transforms
 import torchvision.transforms as T
-
+n = 32*5*5
 class Net(torch.nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         self.layers = nn.ModuleList()
-        
-        self.layers+=[nn.Conv2d(1, 128,  kernel_size=3) ,
-                      nn.ReLU(inplace=True)]
+
+        self.layers += [nn.Conv2d(1, 128, kernel_size=11),
+                        nn.ReLU(inplace=True)]
         self.layers += [nn.BatchNorm2d(128)]
         self.layers += [nn.MaxPool2d(2)]
+        self.layers += [nn.Conv2d(128, 60, kernel_size=6),
+                        nn.ReLU(inplace=True)]
+        self.layers += [nn.MaxPool2d(2)]
 
-        self.layers+=[nn.Conv2d(128, 60,  kernel_size=3, stride=1),
-                      nn.ReLU(inplace=True)]
-        self.layers+=[nn.Conv2d(60, 32,  kernel_size=3),
-                      nn.ReLU(inplace=True)]
+        self.layers += [nn.Conv2d(60, 60, kernel_size=3),
+                        nn.ReLU(inplace=True)]
+        self.layers += [nn.Conv2d(60, 32, kernel_size=2,stride= 3),
+                        nn.ReLU(inplace=True)]
         self.layers += [nn.BatchNorm2d(32)]
         # self.layers += [nn.Dropout()]
 
-        self.layers+=[nn.Conv2d(32, 32,  kernel_size=3),
-                      nn.ReLU()]
-        self.fc = nn.Linear(32*7*7, 2)
-
+        self.layers += [nn.Conv2d(32, 32, kernel_size=2),
+                        nn.ReLU()]
+        self.classifier = nn.Sequential(
+            # nn.Dropout(p=0.5, inplace=True),
+            nn.Linear(in_features=n, out_features=4096),
+            nn.ReLU(),
+            # nn.Dropout(p=0.5, inplace=True),
+            nn.Linear(in_features=4096, out_features=4096),
+            nn.ReLU(),
+            nn.Linear(in_features=4096, out_features=2),
+        )
     def forward(self, x):
         for i in range(len(self.layers)):
             # print(x.size())
-            x = self.layers[i](x)
             # print(x.size())
-
+            x = self.layers[i](x)
+            #
         # x = x.view(-1, 32*4*4)
-        x = x.view(-1, 32*7*7)
-        x = self.fc(x)
+        x = x.view(-1, n)
+        x = self.classifier(x)
         return x
 
 
@@ -87,13 +97,16 @@ if __name__=="__main__":
 
     # dataset: normalize and convert to tensor
 
-    transform = transforms.Compose([
+    data_transform = transforms.Compose([
         transforms.Normalize((0.5,), (0.5,)),
     ])
 
-    def combineTransform(img):
-        img += 2*T.functional.adjust_sharpness(img, 5)
-        img += 4* T.functional.adjust_contrast(img, 3)
+
+    def combineTransform(img, sharpness_w=2, contrast_w=3):
+        img = transforms.Resize(100)(img)
+        img = data_transform(img)
+        img += sharpness_w * T.functional.adjust_sharpness(img, 4)
+        img += contrast_w * T.functional.adjust_contrast(img, 2)
         return img
 
     # dataset: load mednist data
@@ -110,7 +123,7 @@ if __name__=="__main__":
         # x0 = torch.stack([combineTransform(x) for x in x0])
         # x1 = torch.stack([combineTransform(x) for x in x1])
 
-        train_data = torch.utils.data.TensorDataset(transform(torch.cat([x0,x1])), torch.cat([torch.zeros((x0.shape[0])), torch.ones((x1.shape[0]))]).long())
+        train_data = torch.utils.data.TensorDataset(combineTransform(torch.cat([x0,x1])), torch.cat([torch.zeros((x0.shape[0])), torch.ones((x1.shape[0]))]).long())
 
         x0_test = torch.Tensor()
         x1_test = torch.Tensor()
@@ -124,12 +137,12 @@ if __name__=="__main__":
         # x0_test = torch.stack([combineTransform(x) for x in x0_test])
         # x1_test = torch.stack([combineTransform(x) for x in x1_test])
 
-        test = torch.utils.data.TensorDataset(transform(torch.cat([x0_test, x1_test])), torch.cat(
+        test = torch.utils.data.TensorDataset(combineTransform(torch.cat([x0_test, x1_test])), torch.cat(
             [torch.zeros((x0_test.shape[0])), torch.ones((x1_test.shape[0]))]).long())
 
         x = torch.load(input_dir + '/data/val/image_tensors.pt')
         x =  torch.stack([combineTransform(_x) for _x in x])
-        val_data = torch.utils.data.TensorDataset(transform(x))
+        val_data = torch.utils.data.TensorDataset(combineTransform(x))
         
         # dataset: initialize dataloaders for train and validation set
         train_loader = torch.utils.data.DataLoader(train_data, batch_size=128, shuffle=True)
@@ -153,7 +166,7 @@ if __name__=="__main__":
         ### Training
         # model: training loop
         print("[Training] Start...\n")
-        for epoch in range(100):
+        for epoch in range(200):
             train(model, device, train_loader, optimizer, epoch, display=epoch % 5 == 0)
         print("\n[Training] Done")
         ##################### END OF YOUR CODE
