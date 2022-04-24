@@ -8,7 +8,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
-import matplotlib.pyplot as plt
 import numpy as np
 from sys import argv
 from torchvision import datasets, transforms
@@ -29,7 +28,7 @@ class Net(torch.nn.Module):
         self.layers+=[nn.Conv2d(60, 32,  kernel_size=3),
                       nn.ReLU(inplace=True)]
         self.layers += [nn.BatchNorm2d(32)]
-        self.layers += [nn.Dropout()]
+        # self.layers += [nn.Dropout()]
 
         self.layers+=[nn.Conv2d(32, 32,  kernel_size=3),
                       nn.ReLU()]
@@ -38,7 +37,6 @@ class Net(torch.nn.Module):
     def forward(self, x):
         for i in range(len(self.layers)):
             # print(x.size())
-
             x = self.layers[i](x)
             # print(x.size())
 
@@ -50,6 +48,7 @@ class Net(torch.nn.Module):
 
 def train(model, device, train_loader, optimizer, epoch, display=True):
     model.train()
+    model = model.to(device)
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
@@ -68,7 +67,7 @@ import os
 # import seaborn as sn
 # import pandas as pd
 if __name__=="__main__":
-    validationMode = True
+    validationMode = False
 
     if len(argv)==1:
         input_dir = os.getcwd()
@@ -93,8 +92,8 @@ if __name__=="__main__":
     ])
 
     def combineTransform(img):
-        img += 2*T.functional.adjust_sharpness(img, 4)
-        img += 4* T.functional.adjust_contrast(img, 2)
+        img += 2*T.functional.adjust_sharpness(img, 5)
+        img += 4* T.functional.adjust_contrast(img, 3)
         return img
 
     # dataset: load mednist data
@@ -108,11 +107,10 @@ if __name__=="__main__":
         x0 = torch.load(input_dir + '/data/train_data/train_{}/class_0/image_tensors.pt'.format(i))
         x1 = torch.load(input_dir + '/data/train_data/train_{}/class_1/image_tensors.pt'.format(i))
 
-        x0 = torch.stack([combineTransform(x) for x in x0])
-        x1 = torch.stack([combineTransform(x) for x in x1])
+        # x0 = torch.stack([combineTransform(x) for x in x0])
+        # x1 = torch.stack([combineTransform(x) for x in x1])
 
         train_data = torch.utils.data.TensorDataset(transform(torch.cat([x0,x1])), torch.cat([torch.zeros((x0.shape[0])), torch.ones((x1.shape[0]))]).long())
-
 
         x0_test = torch.Tensor()
         x1_test = torch.Tensor()
@@ -123,8 +121,8 @@ if __name__=="__main__":
                 x1 = torch.load(input_dir + '/data/train_data/train_{}/class_1/image_tensors.pt'.format(j))
                 x0_test = torch.cat([x0,x0_test])
                 x1_test = torch.cat([x1,x1_test])
-        x0_test = torch.stack([combineTransform(x) for x in x0_test])
-        x1_test = torch.stack([combineTransform(x) for x in x1_test])
+        # x0_test = torch.stack([combineTransform(x) for x in x0_test])
+        # x1_test = torch.stack([combineTransform(x) for x in x1_test])
 
         test = torch.utils.data.TensorDataset(transform(torch.cat([x0_test, x1_test])), torch.cat(
             [torch.zeros((x0_test.shape[0])), torch.ones((x1_test.shape[0]))]).long())
@@ -155,7 +153,7 @@ if __name__=="__main__":
         ### Training
         # model: training loop
         print("[Training] Start...\n")
-        for epoch in range(50):
+        for epoch in range(100):
             train(model, device, train_loader, optimizer, epoch, display=epoch % 5 == 0)
         print("\n[Training] Done")
         ##################### END OF YOUR CODE
@@ -174,6 +172,8 @@ if __name__=="__main__":
 
 
         if validationMode:
+            import matplotlib.pyplot as plt
+
             test_loader = torch.utils.data.DataLoader(test, batch_size=128, shuffle=True)
             with torch.no_grad():
                 for (data, target)in test_loader:
@@ -181,11 +181,52 @@ if __name__=="__main__":
                     output = model(data)
                     pred = output.max(1, keepdim=True)[1]  # get the index of the max log-probability
                     test_predictions.extend(pred.squeeze().cpu().tolist())
-
                     correct  = (np.array(pred.squeeze().cpu().tolist()) == np.array(target.squeeze().cpu().tolist()))
             accuracy = correct.sum() / correct.size
             accuracies.append(accuracy)
             print('Accuracy is ', accuracy)
+            y_pred = []
+            y_true = []
+
+            # iterate over test data
+            for inputs, labels in test_loader:
+                inputs = inputs.to(device)
+                output = model(inputs)  # Feed Network
+
+                output = (torch.max(torch.exp(output), 1)[1]).data.cpu().numpy()
+                y_pred.extend(output)  # Save Prediction
+
+                labels = labels.data.cpu().numpy()
+                y_true.extend(labels)  # Save Truth
+                break
+
+            for index, (pre, target) in enumerate(zip(y_pred, y_true)):
+                fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+                image = test_loader.dataset[index][0]
+                x = image.numpy()[0]
+                fig.suptitle(f'True Label: {target}, Predicted: {pre}')
+                ax1.matshow(x)
+                ax1.set_title('Original')
+                # blur = makeBlur([image])
+                # ax2.matshow(blur[0][0] )
+                # ax2.set_title(f'Blur ')
+                bright = T.functional.adjust_sharpness(image, 4)
+                ax2.matshow(bright[0])
+                ax2.set_title(f'Sharpness')
+
+                x = T.functional.adjust_contrast(image, 2)
+                ax3.matshow(x[0])
+                ax3.set_title(f'Contrast')
+
+                x = combineTransform(image)
+                ax4.matshow(x[0])
+
+                ax4.set_title(f'Combined')
+                fig.tight_layout()
+
+                plt.show()
+                if index == 10:
+                    exit()
         else:
             test_loader = torch.utils.data.DataLoader(val_data, batch_size=128, shuffle=False)
             with torch.no_grad():
@@ -197,43 +238,7 @@ if __name__=="__main__":
         # test evaluation: save predictions
         test_str = '\n'.join(list(map(str, test_predictions)))
 
-        # y_pred = []
-        # y_true = []
-        #
-        # # iterate over test data
-        # for inputs, labels in test_loader:
-        #     output = model(inputs)  # Feed Network
-        #
-        #     output = (torch.max(torch.exp(output), 1)[1]).data.cpu().numpy()
-        #     y_pred.extend(output)  # Save Prediction
-        #
-        #     labels = labels.data.cpu().numpy()
-        #     y_true.extend(labels)  # Save Truth
-        #
-        #
-        #
-        # # for index, (pre, target) in enumerate( zip(y_pred,y_true)):
-        # #     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
-        # #
-        # #     image = test_loader.dataset[index][0]
-        # #     x = image.numpy()[0]
-        # #     fig.suptitle(f'True Label: {target}, Predicted: {pre}')
-        # #     ax1.matshow(x )
-        # #     ax1.set_title('Original')
-        # #     # blur = makeBlur([image])
-        # #     # ax2.matshow(blur[0][0] )
-        # #     # ax2.set_title(f'Blur ')
-        # #     bright = T.functional.adjust_sharpness(image,4)
-        # #     ax2.matshow(bright[0])
-        # #     ax2.set_title(f'Sharpness')
-        # #     x = combineTransform(image)
-        # #     ax3.matshow(x[0] )
-        # #     ax3.set_title(f'Normalize (0.5,0.5) ')
-        # #     x = T.functional.adjust_contrast(image,2)
-        # #     ax4.matshow(x[0])
-        # #     ax4.set_title(f'Contrast ')
-        # #     fig.tight_layout()
-        # #     plt.show()
+
         #
         # # constant for classes
         # classes = ('havenot','have')
