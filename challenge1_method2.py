@@ -48,12 +48,11 @@ def train(model, device, train_loader, optimizer, epoch, display=True):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        loss = F.binary_cross_entropy_with_logits(output, target.float())
+        loss = F.cross_entropy(output, target.view(-1))
         loss.backward()
         optimizer.step()
         test_loss += loss.item()
-        output = torch.sigmoid(output)
-        pred = output >= 0.5
+        pred = output.max(1, keepdim=True)[1]
         correct += pred.eq(target.view_as(pred)).sum().item()
     if display:
         print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
@@ -70,10 +69,8 @@ def test(model, device, test_loader, name="\nVal"):
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            test_loss += F.binary_cross_entropy_with_logits(output, target.float(),
-                                                            reduction='sum').item()  # sum up batch loss
-            output = torch.sigmoid(output)
-            pred = output >= 0.5
+            test_loss += F.cross_entropy(output, target.view(-1), reduction='sum').item()  # sum up batch loss
+            pred = output.max(1, keepdim=True)[1]
             correct += pred.eq(target.view_as(pred)).sum().item()
 
     test_loss /= len(test_loader.dataset)
@@ -91,32 +88,64 @@ def evaluate(model, device, test_loader):
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            output = torch.sigmoid(output)
-            output = (output >= 0.5).float() * 1
-            predictions = torch.cat((predictions, output.view(-1)))
+            pred = torch.max(torch.exp(output), 1)[1]
+            predictions = torch.cat((predictions, pred.view(-1)))
             targets = torch.cat((targets, target.view(-1)))
     return predictions, targets
 
 
-image_size = 224
+class Net(torch.nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.layers = nn.ModuleList()
+
+        self.layers += [nn.Conv2d(1, 128, kernel_size=3),
+                        nn.ReLU(inplace=True)]
+        self.layers += [nn.BatchNorm2d(128)]
+        self.layers += [nn.MaxPool2d(2)]
+
+        self.layers += [nn.Conv2d(128, 60, kernel_size=3, stride=1),
+                        nn.ReLU(inplace=True)]
+        self.layers += [nn.Conv2d(60, 32, kernel_size=3),
+                        nn.ReLU(inplace=True)]
+        self.layers += [nn.BatchNorm2d(32)]
+        # self.layers += [nn.Dropout()]
+
+        self.layers += [nn.Conv2d(32, 32, kernel_size=3),
+                        nn.ReLU()]
+        self.fc = nn.Linear(32 * 7 * 7, 2)
+
+    def forward(self, x):
+        for i in range(len(self.layers)):
+            # print(x.size())
+            x = self.layers[i](x)
+            # print(x.size())
+
+        # x = x.view(-1, 32*4*4)
+        x = x.view(-1, 32 * 7 * 7)
+        x = self.fc(x)
+        return x
+
+def combineTransform(img):
+    img += 2 * transforms.functional.adjust_sharpness(img, 5)
+    img += 4 * transforms.functional.adjust_contrast(img, 3)
+    return img
 
 transform_base = transforms.Compose(
     [
-        transforms.Resize(image_size),
-        transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
         transforms.Normalize(mean=0.5, std=0.5)
     ]
 )
 
 
 def augment_training(train_data):
-    train_data = torch.utils.data.TensorDataset(torch.stack([transform_base(x[0]) for x in train_data]),
+    train_data = torch.utils.data.TensorDataset(torch.stack([combineTransform(transform_base(x[0])) for x in train_data]),
                                                 torch.stack([torch.Tensor(x[1]).long() for x in train_data]))
     return train_data
 
 
 def preprocess_val(val_data):
-    val_data = torch.utils.data.TensorDataset(torch.stack([transform_base(x[0]) for x in val_data]),
+    val_data = torch.utils.data.TensorDataset(torch.stack([combineTransform(transform_base(x[0])) for x in val_data]),
                                               torch.stack([torch.Tensor(x[1]).long() for x in val_data]))
     return val_data
 
@@ -161,19 +190,12 @@ for seed in range(0, 20):
                                              batch_size=128,
                                              shuffle=False)
 
-    model = models.alexnet(pretrained=False)
-    model.classifier = nn.Sequential(nn.Dropout(0.5),
-                                     nn.Linear(9216, 4096),
-                                     nn.ReLU(inplace=True),
-                                     nn.Dropout(0.5),
-                                     nn.Linear(4096, 2048),
-                                     nn.ReLU(inplace=True),
-                                     nn.Linear(2048, 1))
+    model = Net()
 
     model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=0.0005)
 
-    for epoch in range(30):
+    for epoch in range(100):
         acc_train, loss_train = train(model, device, train_loader, optimizer, epoch, display=True)
         acc_test, loss_test = test(model, device, val_loader)
         accs_train[seed].append(acc_train)
@@ -201,7 +223,7 @@ def plot_acc(accs_train, accs_test):
     plt.xlabel("Epoch")
     plt.legend(loc="upper left")
     plt.show()
-    plt.savefig("challenge1_acc_plot.png")
+    plt.savefig("challenge1_acc_plot2.png")
 
 
 def plot_loss(loss_train, loss_test):
@@ -212,7 +234,7 @@ def plot_loss(loss_train, loss_test):
     plt.xlabel("Epoch")
     plt.legend(loc="upper left")
     plt.show()
-    plt.savefig("challenge1_loss_plot.png")
+    plt.savefig("challenge1_loss_plot2.png")
 
 
 plot_acc(accs_train, accs_test)
@@ -233,7 +255,7 @@ def print_confusion_matrix(model, loader):
     plt.ylabel('True Label')
     plt.xlabel('Predicted Label')
     plt.show()
-    plt.savefig("confusion.png")
+    plt.savefig("confusion2.png")
 
 print_confusion_matrix(best_model, val_loader)
 
