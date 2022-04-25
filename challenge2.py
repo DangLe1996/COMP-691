@@ -33,6 +33,7 @@ from torchvision import datasets, transforms
 import torchvision.transforms as T
 
 """Now let's visualize the chest xray data"""
+
 data_flag = 'pneumoniamnist'
 info = INFO[data_flag]
 task = info['task']
@@ -41,11 +42,16 @@ DataClass = getattr(medmnist, info['python_class'])
 # load the data
 train_dataset = DataClass(split='train', download=True)
 train_dataset.montage(length=10)
-from sklearn.metrics import classification_report, confusion_matrix
 
-
+# Here the goal is to train on 10 samples on the pneumonia mnist data. In this preliminary testbed, the evaluation will be done on a 1000 sample randomly sampled development set. Note in the end the final evaluation will be done on the full Pneumoniamnist test set as well as potentially a separate dataset. The development set samples here thus should not be used for training in any way, the final evaluation will provide only 10 random samples of the same distribution and as well to evaluate the generality of your algorithm from a data source that is not the Pneumoniamnist training data.
+#
+# Feel free to modify this testbed to your liking, including the normalization transformations, etc. Note, however, the final evaluation testbed will have a rigid set of components where you will need to place your answer. The only constraint is the data. Refer to the full project instructions for more information.
+#
+# Below we set up training functions. Again you are free to fully modify this testbed in your prototyping within the constraints of the data used. You can use tools outside of PyTorch for training models if desired as well although the torchvision dataloaders will still be useful for interacting with the Pneumoniamnist dataset.
+# """
+#
+#
 def train(model, device, train_loader, optimizer, epoch, display=True):
-    criterion = torch.nn.TripletMarginLoss()
 
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -84,7 +90,6 @@ def test(model, device, test_loader, name="\nVal"):
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 
 
 
@@ -160,6 +165,7 @@ for seed in range(0, seedNumber):
                                                 torch.stack([torch.Tensor(x[1]).long() for x in train_data]))
     val_data = torch.utils.data.TensorDataset(torch.stack([combineTransform(x[0]) for x in val_data]),
                                               torch.stack([torch.Tensor(x[1]).long() for x in val_data]))
+
 
     images = val_data[0][0]
     img = images.numpy().transpose(1, 2, 0)
